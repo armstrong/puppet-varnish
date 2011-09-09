@@ -5,11 +5,22 @@
 # server.
 #
 backend default {
-  .host = "127.0.0.1";
-  .port = "8080";
+    .host = "127.0.0.1";
+    .port = "8080";
+}
+backend nonexistant {
+    .host = "127.0.0.1";
+    .port = "31337";
+    .probe = {
+       .interval = 10s;
+       .timeout = 0.3 s;
+       .window = 2;
+       .threshold = 1;
+    }
 }
 
 sub vcl_recv {
+    set req.grace = 48h;
     if (req.restarts == 0) {
         if (req.http.x-forwarded-for) {
             set req.http.X-Forwarded-For =
@@ -17,6 +28,8 @@ sub vcl_recv {
         } else {
             set req.http.X-Forwarded-For = client.ip;
         }
+    } else {
+        set req.backend = nonexistant;
     }
     if (req.http.If-Modified-Since) {
         remove req.http.If-Modified-Since;
@@ -42,13 +55,6 @@ sub vcl_recv {
         /* We only deal with GET and HEAD by default */
         return (pass);
     }
-    # remove when things behind us actually work
-    if (req.http.Cookie ~ "sessionid") {
-        return (pass);
-    }
-    if (req.http.Cookie ~ "sessionid" && req.url ~ "/includes/") {
-        return (pass);
-    }
     if (req.http.Authorization) {
         /* Not cacheable by default */
         return (pass);
@@ -72,6 +78,9 @@ sub vcl_pass {
 
 sub vcl_hash {
     hash_data(req.url);
+    if (req.http.X-Forwarded-Proto) {
+        hash_data(req.http.X-Forwarded-Proto);
+    }
     if (req.http.host) {
         hash_data(req.http.host);
     } else {
@@ -89,8 +98,19 @@ sub vcl_miss {
 }
 
 sub vcl_fetch {
+    set beresp.grace = 48h;
     if (beresp.http.X-ESI) {
         set beresp.do_esi = true;
+    }
+    if (beresp.status == 500 ||
+        beresp.status == 502 ||
+        beresp.status == 503 ||
+        beresp.status == 504) {
+        # we got an error, so we're going to restart which will use the
+        # permanently unhealthy backend, we set grace here to tell varnish
+        # how long to wait before retrying the backend
+        set beresp.grace = 300s;
+        return (restart);
     }
     if (beresp.ttl <= 0s ||
         beresp.http.Set-Cookie ||
@@ -101,7 +121,6 @@ sub vcl_fetch {
         set beresp.ttl = 120 s;
         return (hit_for_pass);
     }
-    set beresp.grace = 6h;
     return (deliver);
 }
 
@@ -110,8 +129,10 @@ sub vcl_deliver {
 }
 
 sub vcl_error {
+    if (req.restarts < 1) {
+        return (restart);
+    }
     set obj.http.Content-Type = "text/html; charset=utf-8";
-    set obj.http.Retry-After = "5";
     synthetic {"
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
@@ -121,12 +142,12 @@ sub vcl_error {
     <title>"} + obj.status + " " + obj.response + {"</title>
   </head>
   <body>
-    <h1>Error "} + obj.status + " " + obj.response + {"</h1>
+    <!--<h1>Error "} + obj.status + " " + obj.response + {"</h1>
     <p>"} + obj.response + {"</p>
     <h3>Guru Meditation:</h3>
     <p>XID: "} + req.xid + {"</p>
     <hr>
-    <p>Varnish cache server</p>
+    <p>Varnish cache server</p>-->
   </body>
 </html>
 "};
