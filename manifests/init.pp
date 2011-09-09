@@ -30,7 +30,7 @@ class varnish {
         ensure  => file,
         require => Package['varnish'],
         before  => Service['varnish'],
-        content => template("varnish/texastribune.org.vcl"),
+        source => "puppet:///modules/varnish/texastribune.org.vcl",
     }
     file { 'secret':
         path    => '/etc/varnish/secret',
@@ -44,7 +44,7 @@ class varnish {
         ensure  => file,
         require => Package['varnish'],
         before  => Service['varnish'],
-        content => template("varnish/defaults"),
+        source => "puppet:///modules/varnish/defaults",
     }
     service { varnish:
         ensure     => running,
