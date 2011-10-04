@@ -1,4 +1,4 @@
-class varnish {
+class varnish ($secret) {
     package { curl:
         ensure => installed,
         before => Exec["add_varnish_key"],
@@ -37,7 +37,7 @@ class varnish {
         ensure  => file,
         require => Package['varnish'],
         before  => Service['varnish'],
-        source => "puppet:///modules/varnish/secret",
+        content => $secret,
     }
     file { 'defaults':
         path    => '/etc/default/varnish',
