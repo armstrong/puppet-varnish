@@ -108,7 +108,7 @@ sub vcl_fetch {
         beresp.status == 504) {
         # we got an error, so we're going to restart which will use the
         # permanently unhealthy backend, we set grace here to tell varnish
-        # how long to wait before retrying the backend
+        # how long to wait before retrying the backend for this url
         set beresp.grace = 300s;
         return (restart);
     }
@@ -121,6 +121,7 @@ sub vcl_fetch {
         set beresp.ttl = 120 s;
         return (hit_for_pass);
     }
+    set beresp.http.X-Request-URL = req.url;
     return (deliver);
 }
 
