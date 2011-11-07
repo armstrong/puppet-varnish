@@ -537,7 +537,7 @@ GA_googleAddSlot("ca-pub-1954117026216857", "TexasTribune_Site_Roofline4_ATF_Lea
 </script>
     </body>
 </html>
-        "}
+        "};
     }
     return (deliver);
 }
