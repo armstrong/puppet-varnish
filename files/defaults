@@ -23,4 +23,4 @@ START=yes
 DAEMON_OPTS="-a :8000 -T :7081\
              -f /etc/varnish/texastribune.org.vcl \
              -S /etc/varnish/secret \
-             -s file,/var/lib/varnish/$INSTANCE/varnish_storage.bin,1G"
+             -s file,/var/lib/varnish/$INSTANCE/varnish_storage.bin,700M"
