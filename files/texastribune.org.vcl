@@ -124,7 +124,7 @@ sub vcl_fetch {
     set beresp.http.X-Request-URL = req.url;
     if (req.http.User-Agent ~ "bot") {
         # don't cache the deep stuff that bots find
-        set beresp.ttl = 0s;
+        return (pass);
     }
     return (deliver);
 }
