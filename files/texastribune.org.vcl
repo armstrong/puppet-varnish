@@ -106,8 +106,8 @@ sub vcl_fetch {
         beresp.status == 502 ||
         beresp.status == 503 ||
         beresp.status == 504) {
-        # we got an error, so we're going to restart which will use the
-        # permanently unhealthy backend, we set grace here to tell varnish
+        #// we got an error, so we are going to restart which will use the
+        #// permanently unhealthy backend, we set grace here to tell varnish
         # how long to wait before retrying the backend for this url
         set beresp.grace = 300s;
         return (restart);
@@ -122,14 +122,21 @@ sub vcl_fetch {
         return (hit_for_pass);
     }
     set beresp.http.X-Request-URL = req.url;
+<<<<<<< Updated upstream
     if (req.http.User-Agent ~ "bot") {
         # don't cache the deep stuff that bots find
+=======
+    if (req.http.User-Agent ~ "bot" && 
+        !req.url ~ "^/esi/") {
+        # do not cache the deep stuff that bots find
+>>>>>>> Stashed changes
         set beresp.ttl = 0s;
     }
     return (deliver);
 }
 
 sub vcl_deliver {
+    unset resp.http.Cache-Control;
     return (deliver);
 }
 
