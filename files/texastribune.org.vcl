@@ -122,21 +122,17 @@ sub vcl_fetch {
         return (hit_for_pass);
     }
     set beresp.http.X-Request-URL = req.url;
-<<<<<<< Updated upstream
-    if (req.http.User-Agent ~ "bot") {
-        # don't cache the deep stuff that bots find
-=======
     if (req.http.User-Agent ~ "bot" && 
         !req.url ~ "^/esi/") {
         # do not cache the deep stuff that bots find
->>>>>>> Stashed changes
         set beresp.ttl = 0s;
     }
     return (deliver);
 }
 
 sub vcl_deliver {
-    unset resp.http.Cache-Control;
+    /* if we start serving css/images off the webheads this needs to change */
+    set resp.http.Cache-Control = "max-age: 0";
     return (deliver);
 }
 
