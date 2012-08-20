@@ -1,3 +1,5 @@
+# See https://www.varnish-cache.org/trac/wiki/VCLExampleDefault
+#
 # This is a basic VCL configuration file for varnish.  See the vcl(7)
 # man page for details on VCL syntax and semantics.
 #
@@ -19,9 +21,13 @@ backend nonexistant {
     }
 }
 
+/* the first function called when a request comes in */
 sub vcl_recv {
+    /* this tells varnish that we're willing to serve content up to 48 hours old
+     * for this request */
     set req.grace = 48h;
     if (req.restarts == 0) {
+        /* add some additional details to the request headers */
         if (req.http.x-forwarded-for) {
             set req.http.X-Forwarded-For =
             req.http.X-Forwarded-For + ", " + client.ip;
@@ -29,11 +35,19 @@ sub vcl_recv {
             set req.http.X-Forwarded-For = client.ip;
         }
     } else {
+        /* we've already failed, so use a non-existant backend. This will cause
+         * varnish to serve a cached page if it has one for this url */
         set req.backend = nonexistant;
     }
+
+    /* Ignore if modified since, honestly not sure why this was put in
+     * probably ok to remove */
     if (req.http.If-Modified-Since) {
         remove req.http.If-Modified-Since;
     }
+
+    /* Always serve uncompressed, this prvents having multiple cached versions
+     * of a page, let the top nginx handle the detials about gzip/compress */
     if (req.http.Accept-Encoding) {
         set req.http.Accept-Encoding = "";
     }
@@ -63,12 +77,14 @@ sub vcl_recv {
 }
 
 sub vcl_pipe {
+    /*
     # Note that only the first request to the backend will have
     # X-Forwarded-For set.  If you use X-Forwarded-For and want to
     # have it set for all requests, make sure to have:
     # set bereq.http.connection = "close";
     # here.  It is not set by default as it might break some broken web
     # applications, like IIS with NTLM authentication.
+    */
     return (pipe);
 }
 
@@ -78,6 +94,9 @@ sub vcl_pass {
 
 sub vcl_hash {
     hash_data(req.url);
+    /* http and https pages can be different, so cache separately
+     * this is especially important for https only pages, since http
+     * will be a redirect and https will be real content  */
     if (req.http.X-Forwarded-Proto) {
         hash_data(req.http.X-Forwarded-Proto);
     }
@@ -98,7 +117,11 @@ sub vcl_miss {
 }
 
 sub vcl_fetch {
+    /* Tells varnish that this *object* can be served up until 48 hours after
+     * it has expired. In order for grace to work, it must be set on the object
+     * and the request. */
     set beresp.grace = 48h;
+    /* If the response wants esi (via armstrong.esi), do esi */
     if (beresp.http.X-ESI) {
         set beresp.do_esi = true;
     }
@@ -106,9 +129,11 @@ sub vcl_fetch {
         beresp.status == 502 ||
         beresp.status == 503 ||
         beresp.status == 504) {
-        #// we got an error, so we are going to restart which will use the
-        #// permanently unhealthy backend, we set grace here to tell varnish
-        # how long to wait before retrying the backend for this url
+        /*
+         we got an error, so we are going to restart which will use the
+         permanently unhealthy backend, we set grace here to tell varnish
+         how long to wait before retrying the backend for this url
+         */
         set beresp.grace = 300s;
         return (restart);
     }
@@ -121,17 +146,23 @@ sub vcl_fetch {
         set beresp.ttl = 120 s;
         return (hit_for_pass);
     }
+    /* add the request url to the object for easier banning. By doing bans
+     * based off of object attributes, the ban lurker can actually expire 
+     * objects and clear out the ban list */
     set beresp.http.X-Request-URL = req.url;
     if (req.http.User-Agent ~ "bot" && 
         !req.url ~ "^/esi/") {
-        # do not cache the deep stuff that bots find
+        /* do not cache the deep stuff that bots find */
         set beresp.ttl = 0s;
     }
     return (deliver);
 }
 
 sub vcl_deliver {
-    /* if we start serving css/images off the webheads this needs to change */
+    /* We don't want clients to actually cache pages for the length of time
+     * that our Cache-control headers say, as that results in people not getting
+     * fresh comments or updates to stories. If we start serving css/images
+     * off the webheads this needs to change to something more nuanced */
     set resp.http.Cache-Control = "max-age: 0";
     return (deliver);
 }
@@ -141,6 +172,8 @@ sub vcl_error {
         return (restart);
     }
     if (req.url ~ "^/esi/") {
+        /* for esi components, we want to send back nothing visible, since that
+         * will cause the least amount of disruption */
         set obj.http.Content-Type = "text/html; charset=utf-8";
         synthetic {"
         <!--<h1>Error "} + obj.status + " " + obj.response + {"</h1>
@@ -151,6 +184,7 @@ sub vcl_error {
         <p>Varnish cache server</p>-->
         "};
     } else {
+        /* for non esi, we want a decent error page */
         set obj.http.Content-Type = "text/html; charset=utf-8";
         synthetic {"
 <!DOCTYPE html>
